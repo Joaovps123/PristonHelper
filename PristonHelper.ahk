@@ -11,9 +11,7 @@ SetTitleMatchMode, 2
 #InstallKeybdHook
 #UseHook On
 
-; ================================================
-; INI File Initialization
-; ================================================
+; ========== Configuration File Setup ==========
 iniFile := A_ScriptDir "\PristonHelper.ini"
 
 IfNotExist, %iniFile%
@@ -37,98 +35,92 @@ Color=
     ), %iniFile%
 }
 
-; ================================================
-; State Variables
-; ================================================
-Toggle := false
-AutoClickEnabled := false
-AutoClickMode := "" ; Fast or Slow
-HoldingA := false
-GameInFocus := false
-ConfigModeActive := false
-ConfiguringBar := ""
+; ========== Global State ==========
+isActive := false
+isAutoClickEnabled := false
+autoClickMode := "" ; "Fast" or "Slow"
+isHoldingA := false
+isGameFocused := false
+isConfigMode := false
+configTarget := ""
 
-HP_X := "", HP_Y := "", HP_Color := ""
-STM_X := "", STM_Y := "", STM_Color := ""
-MP_X := "", MP_Y := "", MP_Color := ""
+hpX := "", hpY := "", hpColor := ""
+stmX := "", stmY := "", stmColor := ""
+mpX := "", mpY := "", mpColor := ""
+
+lastClickTime := A_TickCount
 
 LoadConfig()
-SetTimer, CheckGameWindow, 300
+SetTimer, CheckGameFocus, 300
 Return
 
-CheckGameWindow:
+; ========== Game Focus Detection ==========
+CheckGameFocus:
 If WinActive("PristonTale") {
-    If !GameInFocus {
-        GameInFocus := true
+    If !isGameFocused {
+        isGameFocused := true
         UpdateToolTip()
     }
 } Else {
-    If GameInFocus {
-        GameInFocus := false
+    If isGameFocused {
+        isGameFocused := false
         UpdateToolTip()
     }
 }
 Return
 
-; ================================================
-; Control Hotkeys
-; ================================================
-^Numpad1::
-If !AllBarsConfigured() {
-    MsgBox, Please configure HP, STM, and MP bars before starting.
+; ========== Hotkeys ==========
+^Numpad1:: ; Activate system
+If !IsConfigValid() {
+    MsgBox, Please configure HP, STM, and MP before starting.
     Return
 }
-Toggle := true
-AutoClickEnabled := false
-AutoClickMode := ""
+isActive := true
+isAutoClickEnabled := false
+autoClickMode := ""
 SetTimer, MainLoop, 50
-SetTimer, AutoClick, Off
 UpdateToolTip()
 Return
 
-^Numpad0::
-Toggle := false
-AutoClickEnabled := false
-AutoClickMode := ""
+^Numpad0:: ; Deactivate system
+isActive := false
+isAutoClickEnabled := false
+autoClickMode := ""
 SetTimer, MainLoop, Off
-SetTimer, AutoClick, Off
-SetTimer, ShowMouseConfig, Off
+SetTimer, ShowMouseTooltip, Off
 ToolTip
-ConfigModeActive := false
+isConfigMode := false
 Return
 
-^Numpad2:: ; Fast AC
-If Toggle {
-    if (!AutoClickEnabled || AutoClickMode != "Fast") {
-        AutoClickEnabled := true
-        AutoClickMode := "Fast"
-        SetTimer, AutoClick, 180
+^Numpad2:: ; Toggle Fast Auto Click
+If isActive {
+    if (!isAutoClickEnabled || autoClickMode != "Fast") {
+        isAutoClickEnabled := true
+        autoClickMode := "Fast"
     } else {
-        AutoClickEnabled := false
-        AutoClickMode := ""
-        SetTimer, AutoClick, Off
+        isAutoClickEnabled := false
+        autoClickMode := ""
     }
     UpdateToolTip()
 }
 Return
 
-^Numpad3:: ; Slow AC
-If Toggle {
-    if (!AutoClickEnabled || AutoClickMode != "Slow") {
-        AutoClickEnabled := true
-        AutoClickMode := "Slow"
-        SetTimer, AutoClick, 1500
+^Numpad3:: ; Toggle Slow Auto Click
+If isActive {
+    if (!isAutoClickEnabled || autoClickMode != "Slow") {
+        isAutoClickEnabled := true
+        autoClickMode := "Slow"
+        lastClickTime := A_TickCount
     } else {
-        AutoClickEnabled := false
-        AutoClickMode := ""
-        SetTimer, AutoClick, Off
+        isAutoClickEnabled := false
+        autoClickMode := ""
     }
     UpdateToolTip()
 }
 Return
 
-~a::HoldingA := true
-~a up::HoldingA := false
+~a::isHoldingA := true
+~a up::isHoldingA := false
 
 ^Numpad7::StartConfig("HP")
 Return
@@ -138,126 +130,130 @@ Return
 Return
 
 ~LButton::
-If (ConfigModeActive) {
+If isConfigMode {
     MouseGetPos, x, y
     PixelGetColor, color, x, y, RGB
-    IniWrite, %x%, %iniFile%, %ConfiguringBar%, X
-    IniWrite, %y%, %iniFile%, %ConfiguringBar%, Y
-    IniWrite, %color%, %iniFile%, %ConfiguringBar%, Color
-    SetTimer, ShowMouseConfig, Off
-    ConfigModeActive := false
+    IniWrite, %x%, %iniFile%, %configTarget%, X
+    IniWrite, %y%, %iniFile%, %configTarget%, Y
+    IniWrite, %color%, %iniFile%, %configTarget%, Color
+    SetTimer, ShowMouseTooltip, Off
+    isConfigMode := false
     ToolTip
-    MsgBox, %ConfiguringBar% saved at X:%x% Y:%y% Color:%color%
+    MsgBox, %configTarget% saved at X:%x% Y:%y% Color:%color%
     LoadConfig()
 }
 Return
 
 ~RButton::
-If (ConfigModeActive) {
-    SetTimer, ShowMouseConfig, Off
-    ConfigModeActive := false
+If isConfigMode {
+    SetTimer, ShowMouseTooltip, Off
+    isConfigMode := false
     ToolTip
-    MsgBox, Configuration for %ConfiguringBar% cancelled.
+    MsgBox, Configuration for %configTarget% cancelled.
 }
 Return
 
-; ================================================
-; Main Potion Logic
-; ================================================
+; ========== Main Logic ==========
 MainLoop:
-If !Toggle || !GameInFocus
+If !isActive || !isGameFocused
     Return
 
-prioridadeAtendida := false
-PixelGetColor, currentColor, %HP_X%, %HP_Y%, RGB
-If (currentColor <> HP_Color) {
+needsPotion := false
+
+PixelGetColor, currentColor, %hpX%, %hpY%, RGB
+If (currentColor <> hpColor) {
     SendInput, {1 down}
     Sleep, 50
     SendInput, {1 up}
-    prioridadeAtendida := true
+    needsPotion := true
 }
-If !prioridadeAtendida {
-    PixelGetColor, currentColor, %STM_X%, %STM_Y%, RGB
-    If (currentColor <> STM_Color) {
+
+If !needsPotion {
+    PixelGetColor, currentColor, %stmX%, %stmY%, RGB
+    If (currentColor <> stmColor) {
         SendInput, {2 down}
         Sleep, 50
         SendInput, {2 up}
-        prioridadeAtendida := true
+        needsPotion := true
     }
 }
-If !prioridadeAtendida {
-    PixelGetColor, currentColor, %MP_X%, %MP_Y%, RGB
-    If (currentColor <> MP_Color) {
+
+If !needsPotion {
+    PixelGetColor, currentColor, %mpX%, %mpY%, RGB
+    If (currentColor <> mpColor) {
         SendInput, {3 down}
         Sleep, 50
         SendInput, {3 up}
-        prioridadeAtendida := true
+        needsPotion := true
     }
 }
-If !prioridadeAtendida && AutoClickEnabled && !HoldingA && GameInFocus {
-    Click, right
+
+; Handle AutoClick based on mode
+If (!needsPotion && isAutoClickEnabled && !isHoldingA && isGameFocused) {
+    If (autoClickMode = "Fast") {
+        Click, right
+    } Else If (autoClickMode = "Slow") {
+        If (A_TickCount - lastClickTime >= 2000) {
+            Click, right
+            lastClickTime := A_TickCount
+        }
+    }
 }
 Return
 
-AutoClick:
-If Toggle && AutoClickEnabled && !HoldingA && GameInFocus {
-    Click, right
-}
-Return
-
-ShowMouseConfig:
-If (ConfigModeActive) {
+; ========== Mouse Tooltip During Config ==========
+ShowMouseTooltip:
+If isConfigMode {
     MouseGetPos, x, y
     PixelGetColor, color, x, y, RGB
-    ToolTip, Configuring %ConfiguringBar%`nX: %x% | Y: %y% | Color: %color%
+    ToolTip, Configuring %configTarget%`nX: %x% | Y: %y% | Color: %color%
 }
 Return
 
-StartConfig(bar) {
-    global ConfigModeActive, ConfiguringBar, Toggle
-    if (Toggle) {
+; ========== Helpers ==========
+StartConfig(barName) {
+    global isActive, isConfigMode, configTarget
+    if (isActive) {
         MsgBox, Disable the system before configuring.
         return
     }
-    ConfiguringBar := bar
-    ConfigModeActive := true
-    SetTimer, ShowMouseConfig, 50
+    configTarget := barName
+    isConfigMode := true
+    SetTimer, ShowMouseTooltip, 50
 }
 
 UpdateToolTip() {
-    global Toggle, AutoClickEnabled, AutoClickMode, GameInFocus
-    tooltipText := ""
-    if (Toggle)
-        tooltipText := "Potion"
-    if (AutoClickEnabled) {
-        if (tooltipText != "")
-            tooltipText .= " | "
-        tooltipText .= "AC:" AutoClickMode
+    global isActive, isAutoClickEnabled, autoClickMode, isGameFocused
+    status := ""
+    if (isActive)
+        status := "Potion"
+    if (isAutoClickEnabled) {
+        if (status != "")
+            status .= " | "
+        status .= "AC:" autoClickMode
     }
-    If (tooltipText != "" && GameInFocus)
-        ToolTip, %tooltipText%
+    If (status != "" && isGameFocused)
+        ToolTip, %status%
     Else
         ToolTip
 }
 
 LoadConfig() {
-    global iniFile, HP_X, HP_Y, HP_Color, STM_X, STM_Y, STM_Color, MP_X, MP_Y, MP_Color
-    IniRead, HP_X, %iniFile%, HP, X
-    IniRead, HP_Y, %iniFile%, HP, Y
-    IniRead, HP_Color, %iniFile%, HP, Color
-    IniRead, STM_X, %iniFile%, STM, X
-    IniRead, STM_Y, %iniFile%, STM, Y
-    IniRead, STM_Color, %iniFile%, STM, Color
-    IniRead, MP_X, %iniFile%, MP, X
-    IniRead, MP_Y, %iniFile%, MP, Y
-    IniRead, MP_Color, %iniFile%, MP, Color
+    global iniFile, hpX, hpY, hpColor, stmX, stmY, stmColor, mpX, mpY, mpColor
+    IniRead, hpX, %iniFile%, HP, X
+    IniRead, hpY, %iniFile%, HP, Y
+    IniRead, hpColor, %iniFile%, HP, Color
+    IniRead, stmX, %iniFile%, STM, X
+    IniRead, stmY, %iniFile%, STM, Y
+    IniRead, stmColor, %iniFile%, STM, Color
+    IniRead, mpX, %iniFile%, MP, X
+    IniRead, mpY, %iniFile%, MP, Y
+    IniRead, mpColor, %iniFile%, MP, Color
 }
 
-AllBarsConfigured() {
-    global HP_X, HP_Y, HP_Color, STM_X, STM_Y, STM_Color, MP_X, MP_Y, MP_Color
-    if (HP_X != "" && HP_Y != "" && HP_Color != "" 
-     && STM_X != "" && STM_Y != "" && STM_Color != "" 
-     && MP_X != "" && MP_Y != "" && MP_Color != "")
-        return true
-    return false
+IsConfigValid() {
+    global hpX, hpY, hpColor, stmX, stmY, stmColor, mpX, mpY, mpColor
+    return (hpX != "" && hpY != "" && hpColor != ""
+         && stmX != "" && stmY != "" && stmColor != ""
+         && mpX != "" && mpY != "" && mpColor != "")
 }
