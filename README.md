@@ -90,12 +90,6 @@ Color=0x0121B6
 
 ---
 
-## 📦 Distribuição
-
-Coloque o executável `PristonHelper.exe` e este `README.md` na mesma pasta para distribuição organizada.
-
----
-
 ## 📜 Licença
 
 Este projeto é distribuído gratuitamente para fins pessoais. Não é afiliado ou suportado oficialmente pelo jogo Priston Tale.
