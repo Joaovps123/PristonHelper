@@ -11,7 +11,7 @@ SetTitleMatchMode, 2
 #InstallKeybdHook
 #UseHook On
 
-; ========== Configuration File Setup ==========
+; ========== INI Configuration Setup ==========
 iniFile := A_ScriptDir "\PristonHelper.ini"
 
 IfNotExist, %iniFile%
@@ -43,6 +43,8 @@ isHoldingA := false
 isGameFocused := false
 isConfigMode := false
 configTarget := ""
+isPaused := false
+pauseUntil := 0
 
 hpX := "", hpY := "", hpColor := ""
 stmX := "", stmY := "", stmColor := ""
@@ -71,63 +73,70 @@ Return
 
 ; ========== Hotkeys ==========
 ^Numpad1:: ; Activate system
-If !IsConfigValid() {
-    MsgBox, Please configure HP, STM, and MP before starting.
-    Return
-}
-isActive := true
-isAutoClickEnabled := false
-autoClickMode := ""
-SetTimer, MainLoop, 50
-UpdateToolTip()
+^1::
+    If !IsConfigValid() {
+        MsgBox, Please configure HP, STM, and MP before starting.
+        Return
+    }
+    isActive := true
+    isAutoClickEnabled := false
+    autoClickMode := ""
+    SetTimer, MainLoop, 50
+    UpdateToolTip()
 Return
 
 ^Numpad0:: ; Deactivate system
-isActive := false
-isAutoClickEnabled := false
-autoClickMode := ""
-SetTimer, MainLoop, Off
-SetTimer, ShowMouseTooltip, Off
-ToolTip
-isConfigMode := false
+^0::
+    isActive := false
+    isAutoClickEnabled := false
+    autoClickMode := ""
+    SetTimer, MainLoop, Off
+    SetTimer, ShowMouseTooltip, Off
+    ToolTip
+    isConfigMode := false
 Return
 
 ^Numpad2:: ; Toggle Fast Auto Click
-If isActive {
-    if (!isAutoClickEnabled || autoClickMode != "Fast") {
-        isAutoClickEnabled := true
-        autoClickMode := "Fast"
-    } else {
-        isAutoClickEnabled := false
-        autoClickMode := ""
+^2::
+    If isActive {
+        if (!isAutoClickEnabled || autoClickMode != "Fast") {
+            isAutoClickEnabled := true
+            autoClickMode := "Fast"
+        } else {
+            isAutoClickEnabled := false
+            autoClickMode := ""
+        }
+        UpdateToolTip()
     }
-    UpdateToolTip()
-}
 Return
 
 ^Numpad3:: ; Toggle Slow Auto Click
-If isActive {
-    if (!isAutoClickEnabled || autoClickMode != "Slow") {
-        isAutoClickEnabled := true
-        autoClickMode := "Slow"
-        lastClickTime := A_TickCount
-    } else {
-        isAutoClickEnabled := false
-        autoClickMode := ""
+^3::
+    If isActive {
+        if (!isAutoClickEnabled || autoClickMode != "Slow") {
+            isAutoClickEnabled := true
+            autoClickMode := "Slow"
+            lastClickTime := A_TickCount
+        } else {
+            isAutoClickEnabled := false
+            autoClickMode := ""
+        }
+        UpdateToolTip()
     }
-    UpdateToolTip()
-}
 Return
 
-~a::isHoldingA := true
-~a up::isHoldingA := false
+^Numpad7:: 
+^7::StartConfig("HP")
+Return
+^Numpad8:: 
+^8::StartConfig("STM")
+Return
+^Numpad9:: 
+^9::StartConfig("MP")
+Return
 
-^Numpad7::StartConfig("HP")
-Return
-^Numpad8::StartConfig("STM")
-Return
-^Numpad9::StartConfig("MP")
-Return
+~*a::isHoldingA := true
+~*a up::isHoldingA := false
 
 ~LButton::
 If isConfigMode {
@@ -153,9 +162,24 @@ If isConfigMode {
 }
 Return
 
+; ========== Pause on Enter ==========
+~*Enter::
+~*NumpadEnter::
+    isPaused := true
+    pauseUntil := A_TickCount + 4000
+    SetTimer, CheckPause, 100
+Return
+
+CheckPause:
+If (A_TickCount >= pauseUntil) {
+    isPaused := false
+    SetTimer, CheckPause, Off
+}
+Return
+
 ; ========== Main Logic ==========
 MainLoop:
-If !isActive || !isGameFocused
+If !isActive || !isGameFocused || isPaused
     Return
 
 needsPotion := false
@@ -210,7 +234,7 @@ If isConfigMode {
 }
 Return
 
-; ========== Helpers ==========
+; ========== Helper Functions ==========
 StartConfig(barName) {
     global isActive, isConfigMode, configTarget
     if (isActive) {
